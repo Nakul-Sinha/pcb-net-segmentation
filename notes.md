@@ -28,14 +28,14 @@ Working log of challenge facts, design decisions, validation, and submissions.
 ## Compliance
 - Learned deep model only. No hardcoding, no metadata or id shortcuts, no leaderboard probing.
 - solution.py reads only DATA_ROOT (default ./dataset/public) and writes OUT_DIR/submission.csv (default ./working). No comments in the official code per project instruction; reasoning lives in Approach.md and notes.md.
-- ImageNet pretrained encoder via timm, same family of pretrained download the previous Eris solution used. Final recipe is intended to reproduce on A10G class GPU.
+- ImageNet pretrained encoder via timm, same family of pretrained download a previous solution used. Final recipe is intended to reproduce on A10G class GPU.
 
 ## Validation
 - RLE codec round trips all 40 sampled train masks. Convention verified: pixel (0,0) -> "1 1", pixel (0,1) -> "2 1", pixel (1,0) -> "193 1". Empty mask -> empty string.
 - CPU smoke test (FAST=1, PRETRAINED=0, resnet18, 1 fold, 1 epoch, 24 train, 8 test) runs end to end: train, OOF metric, TTA inference, post process, RLE, write submission. Output passed the strict schema validator on the matching id subset.
 - Smoke OOF score about 0.15 with a 1 epoch untrained model, as expected. Real metric comes from the full GPU run.
 
-## Kaggle run infrastructure (kaggle_run driver under eris/kaggle_run)
+## Kaggle run infrastructure (kaggle_run driver under data/kaggle_run)
 - Data is uploaded once as a private dataset (single zip, notebook auto extracts if needed). ResNet34 weights are uploaded as a second private dataset so the kernel needs no internet for weights.
 - solution.ipynb is generated from solution_core via make_notebook.py and pushed as a GPU kernel that reads /kaggle/input and writes /kaggle/working/submission.csv.
 - Environment fixes found while bringing up the kernel:
