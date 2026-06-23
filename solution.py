@@ -122,6 +122,22 @@ def build_input(top_rgb, xray_rgb, seed_bin):
     return x.astype(np.float32)
 
 
+RAW_CACHE = {}
+
+
+def get_raw(r):
+    iid = r["image_id"]
+    cached = RAW_CACHE.get(iid)
+    if cached is not None:
+        return cached
+    top = read_rgb(DATA_ROOT / r["top_path"])
+    xray = read_rgb(DATA_ROOT / r["xray_path"])
+    seed = read_gray(DATA_ROOT / r["seed_mask_path"])
+    mask = read_gray(DATA_ROOT / r["mask_path"]) if "mask_path" in r.index else None
+    RAW_CACHE[iid] = (top, xray, seed, mask)
+    return RAW_CACHE[iid]
+
+
 def d4_apply(arr, op):
     if op == 0:
         return arr
@@ -187,8 +203,8 @@ def augment(img6, mask):
         tx = (random.random() - 0.5) * 16.0
         ty = (random.random() - 0.5) * 16.0
         img6, mask = affine_warp(img6, mask, rot, scale, tx, ty)
-    if random.random() < 0.3:
-        img6, mask = elastic(img6, mask, alpha=12.0, sigma=4.0)
+    if random.random() < 0.15:
+        img6, mask = elastic(img6, mask, alpha=10.0, sigma=4.0)
     img6 = photometric(img6)
     return img6, mask
 
@@ -202,18 +218,12 @@ class CircuitDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
-    def load_raw(self, r):
-        top = read_rgb(DATA_ROOT / r["top_path"])
-        xray = read_rgb(DATA_ROOT / r["xray_path"])
-        seed = read_gray(DATA_ROOT / r["seed_mask_path"])
-        return top, xray, seed
-
     def __getitem__(self, idx):
         r = self.df.iloc[idx]
-        top, xray, seed = self.load_raw(r)
+        top, xray, seed, mask_raw = get_raw(r)
         img6 = build_input(top, xray, seed)
-        if self.has_y:
-            mask = (read_gray(DATA_ROOT / r["mask_path"]) > 127).astype(np.float32)
+        if self.has_y and mask_raw is not None:
+            mask = (mask_raw > 127).astype(np.float32)
         else:
             mask = np.zeros(HW, dtype=np.float32)
         if self.train:
@@ -497,7 +507,12 @@ def predict_probs(model, df, batch):
 
 def train_fold(tr_df, va_df, tag):
     model = SegModel(BACKBONE, IN_CHANS, PRETRAINED).to(DEVICE)
-    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD)
+    enc_params = list(model.encoder.parameters())
+    dec_params = list(model.decoder.parameters()) + list(model.head.parameters())
+    opt = torch.optim.AdamW([
+        {"params": enc_params, "lr": LR * 0.3},
+        {"params": dec_params, "lr": LR},
+    ], weight_decay=WD)
     dl = make_loader(tr_df, True, BATCH)
     steps = max(1, len(dl) * EPOCHS)
     warmup = max(1, int(0.05 * steps))
@@ -570,6 +585,12 @@ def main():
         tr = tr.head(24).reset_index(drop=True)
         te = te.head(8).reset_index(drop=True)
     log(f"train {tr.shape} test {te.shape}")
+
+    for _, r in tr.iterrows():
+        get_raw(r)
+    for _, r in te.iterrows():
+        get_raw(r)
+    log(f"cached {len(RAW_CACHE)} raw images")
 
     test_seed = {}
     for _, r in te.iterrows():

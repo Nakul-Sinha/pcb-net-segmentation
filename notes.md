@@ -46,6 +46,9 @@ Working log of challenge facts, design decisions, validation, and submissions.
 - Run 1 (baseline): resnet34, 5 fold, 80 epochs, img 192, batch 16, composite loss, D4 TTA, hysteresis 0.35/0.55 + keep seed component. T4, about 9.5 min per fold.
   - OOF score 0.1738 (dice 0.170, thin recall 0.237, connectivity 0.119, boundary F1 0.141). Submission valid, 160 rows, all non empty, 109413 fg px.
   - Diagnosis: underfitting. Loss only fell 1.70 to 1.01 over 80 epochs because there are only 13 steps per epoch (208 train / batch 16). Per fold variance is high (fold 2 over predicts, others under predict), which is the threshold sensitivity expected from an undertrained, poorly calibrated model. This is a training budget problem, not a pipeline bug.
+- Run 2 (fix underfitting): 200 epochs, LR 6e-4 with differential LR (encoder 0.3x), RAM cached images, 4 workers, lighter elastic. T4, about 23 min per fold.
+  - OOF score 0.3391 (dice 0.385, thin recall 0.290, connectivity 0.279, boundary F1 0.378). Submission valid, 160 rows, 96642 fg px.
+  - Loss fell 1.70 to 0.41 and per fold scores are tight (0.26 to 0.37), so the model now fits and is well calibrated. Nearly 2x the baseline OOF score across every metric term. Shipped as the current best.
 
 ## Plan to the best submission (highest ROI first)
 1. Fix underfitting: many more gradient steps (raise epochs and effective steps), higher peak LR, RAM cache decoded images and more dataloader workers to stop the GPU starving, lighter elastic and photometric augmentation so 208 images can be fit.
@@ -54,4 +57,5 @@ Working log of challenge facts, design decisions, validation, and submissions.
 4. Optional cbDice or boundary loss for the 0.10 boundary term if boundary F1 lags.
 
 ## Submissions
-- Run 1 baseline committed. OOF score 0.1738. Next: address underfitting per the plan above.
+- Run 1 baseline: OOF score 0.1738. Underfit.
+- Run 2 current best: OOF score 0.3391 (dice 0.385). Fixed underfitting via more steps, higher and differential LR, RAM cache, lighter aug. Next highest ROI: threshold tuning on OOF, a second backbone for ensembling, and optional boundary loss.
